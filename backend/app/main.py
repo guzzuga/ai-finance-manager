@@ -53,6 +53,9 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         _seed_default_categories(db)
+        # Seed default marketplaces
+        from app.services.konveksi_service import KonveksiService
+        KonveksiService.seed_default_marketplaces(db)
     finally:
         db.close()
 
@@ -80,8 +83,10 @@ app.add_middleware(
 # Include routers
 from app.routers.auth import router as auth_router
 from app.routers.transactions import router as transactions_router
+from app.routers.konveksi import router as konveksi_router
 app.include_router(auth_router)
 app.include_router(transactions_router)
+app.include_router(konveksi_router)
 
 # Serve static files (dashboard)
 static_dir = Path(__file__).parent.parent / "static"

@@ -8,14 +8,14 @@ class ResponseFormatter:
     @staticmethod
     def format_help() -> str:
         """Format help message."""
-        return """👋 Selamat Datang di Guzsan Finance AI
+        return """👋 Selamat Datang di ZYNEFINANCE AI
 
-Asisten keuangan dan bisnis berbasis AI untuk membantu Anda mencatat transaksi, 
-memantau arus kas, menghitung keuntungan, dan mendapatkan insight dari data keuangan Anda.
+Asisten keuangan dan bisnis konveksi berbasis AI untuk membantu Anda mencatat transaksi, 
+memantau arus kas, menghitung keuntungan, dan mengelola bisnis konveksi.
 
 📊 Semua data akan tersinkron otomatis ke Google Sheets.
 
-📋 Perintah yang tersedia:
+📋 Perintah Umum:
 /start - Mulai bot
 /help atau /bantuan - Lihat bantuan
 /ringkasan - Ringkasan bulan ini
@@ -24,16 +24,24 @@ memantau arus kas, menghitung keuntungan, dan mendapatkan insight dari data keua
 /bulanini - Rincian bulan ini
 /riwayat - 10 transaksi terakhir
 /kategori - Breakdown per kategori
-/export - Download Excel
-/insight - AI insight keuangan
 /profit - Laporan keuntungan bulanan
 /cashflow - Arus kas 30 hari terakhir
 /reset - Reset semua data
 
+🏭 Perintah Konveksi:
+/stok - Cek stok produk
+/bahan - Stok bahan baku
+/marketplace - Daftar marketplace
+/konveksi - Laporan laba konveksi
+/tambah_produk - Tambah produk baru
+/tambah_bahan - Tambah bahan baku
+
 💡 Kirim pesan biasa untuk mencatat transaksi:
 • "makan siang 25rb"
 • "gaji 5 juta"
-• "grab ke kantor 15rb"
+• "jual kaos L 3pcs di shopee 85rb"
+• "produksi kaos L 10pcs"
+• "beli kain 10 meter 250rb"
 """
 
     @staticmethod

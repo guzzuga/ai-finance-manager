@@ -37,8 +37,12 @@ from app.models.transaction import Transaction
 from app.services.ai_parser import AIParser
 from app.services.transaction_service import TransactionService
 from app.services.report_service import ReportService
+from app.services.konveksi_service import KonveksiService
+from app.services.konveksi_parser import detect_sale_message, detect_production_message, detect_material_purchase_message
 from app.services import google_sheets_service
 from app.bot.response_formatter import ResponseFormatter
+from app.bot.konveksi_formatter import KonveksiFormatter
+from app.bot.konveksi_commands import handle_konveksi_command
 from app.utils.date_helpers import get_today, get_start_of_month, get_end_of_month, get_start_of_week
 from app.config import DEFAULT_CATEGORIES
 
@@ -115,6 +119,12 @@ async def set_bot_commands() -> None:
         {"command": "riwayat", "description": "📝 10 transaksi terakhir"},
         {"command": "kategori", "description": "🏷️ Breakdown per kategori"},
         {"command": "profit", "description": "📈 Laporan keuntungan"},
+        {"command": "konveksi", "description": "🏭 Laporan konveksi"},
+        {"command": "stok", "description": "📦 Stok produk"},
+        {"command": "bahan", "description": "🧵 Stok bahan baku"},
+        {"command": "marketplace", "description": "🛒 Daftar marketplace"},
+        {"command": "tambah_produk", "description": "➕ Tambah produk baru"},
+        {"command": "tambah_bahan", "description": "➕ Tambah bahan baku"},
         {"command": "adduser", "description": "👤 Tambah user baru"},
         {"command": "reset", "description": "🗑️ Reset semua data"},
         {"command": "bantuan", "description": "❓ Bantuan"},
@@ -152,6 +162,12 @@ def get_reply_keyboard() -> dict:
             [
                 {"text": "📈 Profit"},
                 {"text": "📋 Ringkasan"},
+                {"text": "🏭 Konveksi"},
+            ],
+            [
+                {"text": "📦 Stok"},
+                {"text": "🧵 Bahan"},
+                {"text": "🛒 Marketplace"},
             ],
         ],
         "resize_keyboard": True,
@@ -367,6 +383,11 @@ Keuntungan = Pemasukan - Pengeluaran"""
             await send_message(chat_id, "❌ Gagal menambahkan user.")
         return
 
+    # === KONVEKSI COMMANDS ===
+    konveksi_handled = await handle_konveksi_command(command, chat_id, user_id, db, send_message)
+    if konveksi_handled:
+        return
+
     # Unknown command
     await send_message(chat_id, "Perintah tidak dikenali. Ketik /bantuan untuk melihat daftar perintah.")
 
@@ -409,6 +430,10 @@ async def process_message(message: dict, db) -> None:
             "📊 bulan ini": "/bulanini",
             "📈 profit": "/profit",
             "📋 ringkasan": "/ringkasan",
+            "🏭 konveksi": "/konveksi",
+            "📦 stok": "/stok",
+            "🧵 bahan": "/bahan",
+            "🛒 marketplace": "/marketplace",
         }
 
         # Check if it's a reply keyboard button
@@ -424,7 +449,110 @@ async def process_message(message: dict, db) -> None:
             await handle_command(command, chat_id, user.id, db)
             return
 
-        # Regular message → parse as transaction
+        # Regular message → try konveksi detection first, then parse as transaction
+        today_str = str(get_today())
+
+        # 1. Try sale detection
+        sale_data = detect_sale_message(text)
+        if sale_data:
+            try:
+                # Find or create product
+                product = KonveksiService.get_product_by_name(db, sale_data["product_name"])
+                if not product:
+                    product = KonveksiService.create_product(db, {
+                        "name": sale_data["product_name"],
+                        "price": sale_data.get("price_per_unit", 0),
+                        "user_id": user.id,
+                    })
+
+                # Find marketplace
+                marketplace = None
+                if sale_data.get("marketplace_name"):
+                    marketplace = KonveksiService.get_marketplace_by_name(db, sale_data["marketplace_name"])
+                if not marketplace:
+                    marketplace = KonveksiService.get_marketplace_by_name(db, "Offline")
+
+                if marketplace:
+                    sale = KonveksiService.create_sale(db, {
+                        "user_id": user.id,
+                        "product_id": product.id,
+                        "marketplace_id": marketplace.id,
+                        "date": today_str,
+                        "quantity": sale_data["quantity"],
+                        "price_per_unit": sale_data.get("price_per_unit", product.price),
+                        "hpp_per_unit": product.hpp,
+                        "raw_message": text,
+                        "source": "telegram",
+                    })
+                    reply = KonveksiFormatter.format_sale_reply(sale)
+                    await send_message(chat_id, reply)
+                    return
+            except Exception as e:
+                logger.error("Sale detection error: %s", e)
+                # Fall through to regular parsing
+
+        # 2. Try production detection
+        prod_data = detect_production_message(text)
+        if prod_data:
+            try:
+                product = KonveksiService.get_product_by_name(db, prod_data["product_name"])
+                if not product:
+                    product = KonveksiService.create_product(db, {
+                        "name": prod_data["product_name"],
+                        "user_id": user.id,
+                    })
+
+                production = KonveksiService.create_production(db, {
+                    "user_id": user.id,
+                    "product_id": product.id,
+                    "date": today_str,
+                    "quantity": prod_data["quantity"],
+                    "cost_per_unit": product.hpp,
+                    "raw_message": text,
+                    "source": "telegram",
+                })
+                reply = KonveksiFormatter.format_production_reply(production)
+                await send_message(chat_id, reply)
+                return
+            except Exception as e:
+                logger.error("Production detection error: %s", e)
+
+        # 3. Try material purchase detection
+        mat_data = detect_material_purchase_message(text)
+        if mat_data:
+            try:
+                material = KonveksiService.get_material_by_name(db, mat_data["material_name"])
+                if material:
+                    KonveksiService.update_material_stock(db, material.id, mat_data["quantity"])
+                    price_str = f"Rp {mat_data['total_price']:,.0f}".replace(",", ".")
+                    await send_message(chat_id, (
+                        f"✅ *Bahan Baku Ditambahkan!*\n\n"
+                        f"🧵 {material.name}: +{mat_data['quantity']} {mat_data['unit']}\n"
+                        f"💰 Total: {price_str}\n"
+                        f"📊 Stok sekarang: {material.stock} {material.unit}"
+                    ))
+                    return
+                else:
+                    # Create new material
+                    material = KonveksiService.create_material(db, {
+                        "name": mat_data["material_name"],
+                        "unit": mat_data["unit"],
+                        "stock": mat_data["quantity"],
+                        "price_per_unit": mat_data.get("price_per_unit", 0),
+                        "user_id": user.id,
+                    })
+                    price_str = f"Rp {mat_data['total_price']:,.0f}".replace(",", ".")
+                    await send_message(chat_id, (
+                        f"✅ *Bahan Baku Baru Ditambahkan!*\n\n"
+                        f"🧵 {material.name}\n"
+                        f"📊 Stok: {mat_data['quantity']} {mat_data['unit']}\n"
+                        f"💰 Harga: {price_str}"
+                    ))
+                    return
+            except Exception as e:
+                logger.error("Material detection error: %s", e)
+
+        # 4. Fall through to regular transaction parsing
         parsed = await parser.parse(text)
 
         if parsed.get("error"):
@@ -526,6 +654,9 @@ async def poll_updates():
     db = SessionLocal()
     try:
         seed_categories(db)
+        # Seed default marketplaces
+        from app.services.konveksi_service import KonveksiService
+        KonveksiService.seed_default_marketplaces(db)
         # Setup Google Sheets headers
         try:
             google_sheets_service.setup_headers()
