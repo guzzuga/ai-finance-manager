@@ -27,6 +27,12 @@ HEADER_ROWS = 6
 DATA_START_ROW = 7
 COL_RANGE = "A:G"
 
+# Konveksi sheet names (within SHEET_PEMASUKAN spreadsheet)
+SHEET_PENJUALAN = "Penjualan_Konveksi"
+SHEET_PRODUKSI = "Produksi"
+SHEET_BAHAN = "Bahan_Baku"
+KONVEKSI_DATA_START = 4  # Row 4 for konveksi sheets (header at row 3)
+
 
 def _make_request(sheet_id: str, path: str, method: str = "GET", data: dict = None) -> dict:
     """Make authenticated request to Google Sheets via Maton."""
@@ -209,4 +215,89 @@ def clear_data(jenis: str = None) -> bool:
         
         logger.info(f"✅ {label} sheet cleared (headers preserved)")
     
+    return True
+
+
+# ==================== KONVEKSI SHEET FUNCTIONS ====================
+
+def _find_next_konveksi_row(sheet_tab: str) -> int:
+    """Find the next empty row in a konveksi sheet tab."""
+    result = _make_request(SHEET_PEMASUKAN, f"/values/{sheet_tab}!B{KONVEKSI_DATA_START}:B2000")
+    values = result.get("values", [])
+    last_occupied = KONVEKSI_DATA_START - 1
+    for i, row in enumerate(values):
+        cell = str(row[0]).strip() if row and row[0] else ""
+        if cell and not cell.startswith("="):
+            last_occupied = KONVEKSI_DATA_START + i
+    return last_occupied + 1
+
+
+def append_penjualan(
+    tanggal: str, produk: str, marketplace: str, qty: int,
+    harga_per_unit: int, revenue: int, hpp: int, fee: int,
+    ongkir: int, laba: int, order_id: str = "", status: str = "completed",
+    tgl_cair: str = "",
+) -> bool:
+    """Append a sale record to the Penjualan_Konveksi sheet."""
+    next_row = _find_next_konveksi_row(SHEET_PENJUALAN)
+    nomor = next_row - (KONVEKSI_DATA_START - 1)
+
+    row = [[
+        nomor, tanggal, produk, marketplace, qty, harga_per_unit,
+        revenue, hpp, fee, ongkir, laba, order_id, status, tgl_cair,
+    ]]
+    result = _make_request(
+        SHEET_PEMASUKAN,
+        f"/values/{SHEET_PENJUALAN}!A{next_row}:N{next_row}?valueInputOption=USER_ENTERED",
+        method="PUT",
+        data={"values": row},
+    )
+    if "error" in result:
+        logger.error(f"Failed to append penjualan: {result['error']}")
+        return False
+    logger.info(f"✅ Penjualan #{nomor} appended to sheet")
+    return True
+
+
+def append_produksi(
+    tanggal: str, produk: str, qty: int,
+    biaya_per_unit: int, total_biaya: int, catatan: str = "",
+) -> bool:
+    """Append a production record to the Produksi sheet."""
+    next_row = _find_next_konveksi_row(SHEET_PRODUKSI)
+    nomor = next_row - (KONVEKSI_DATA_START - 1)
+
+    row = [[nomor, tanggal, produk, qty, biaya_per_unit, total_biaya, catatan]]
+    result = _make_request(
+        SHEET_PEMASUKAN,
+        f"/values/{SHEET_PRODUKSI}!A{next_row}:G{next_row}?valueInputOption=USER_ENTERED",
+        method="PUT",
+        data={"values": row},
+    )
+    if "error" in result:
+        logger.error(f"Failed to append produksi: {result['error']}")
+        return False
+    logger.info(f"✅ Produksi #{nomor} appended to sheet")
+    return True
+
+
+def append_bahan_baku(
+    tanggal: str, nama: str, unit: str, qty: float,
+    harga_per_unit: int, total: int, supplier: str = "", catatan: str = "",
+) -> bool:
+    """Append a material purchase to the Bahan_Baku sheet."""
+    next_row = _find_next_konveksi_row(SHEET_BAHAN)
+    nomor = next_row - (KONVEKSI_DATA_START - 1)
+
+    row = [[nomor, tanggal, nama, unit, qty, harga_per_unit, total, supplier, catatan]]
+    result = _make_request(
+        SHEET_PEMASUKAN,
+        f"/values/{SHEET_BAHAN}!A{next_row}:I{next_row}?valueInputOption=USER_ENTERED",
+        method="PUT",
+        data={"values": row},
+    )
+    if "error" in result:
+        logger.error(f"Failed to append bahan baku: {result['error']}")
+        return False
+    logger.info(f"✅ Bahan baku #{nomor} appended to sheet")
     return True

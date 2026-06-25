@@ -530,6 +530,18 @@ async def process_message(message: dict, db) -> None:
                 if material:
                     KonveksiService.update_material_stock(db, material.id, mat_data["quantity"])
                     price_str = f"Rp {mat_data['total_price']:,.0f}".replace(",", ".")
+                    # Sync to Google Sheets
+                    try:
+                        google_sheets_service.append_bahan_baku(
+                            tanggal=str(get_today()),
+                            nama=material.name,
+                            unit=mat_data["unit"],
+                            qty=mat_data["quantity"],
+                            harga_per_unit=mat_data.get("price_per_unit", 0),
+                            total=mat_data["total_price"],
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to sync bahan baku to Sheets: %s", e)
                     await send_message(chat_id, (
                         f"✅ *Bahan Baku Ditambahkan!*\n\n"
                         f"🧵 {material.name}: +{mat_data['quantity']} {mat_data['unit']}\n"
@@ -547,6 +559,18 @@ async def process_message(message: dict, db) -> None:
                         "user_id": user.id,
                     })
                     price_str = f"Rp {mat_data['total_price']:,.0f}".replace(",", ".")
+                    # Sync to Google Sheets
+                    try:
+                        google_sheets_service.append_bahan_baku(
+                            tanggal=str(get_today()),
+                            nama=material.name,
+                            unit=mat_data["unit"],
+                            qty=mat_data["quantity"],
+                            harga_per_unit=mat_data.get("price_per_unit", 0),
+                            total=mat_data["total_price"],
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to sync bahan baku to Sheets: %s", e)
                     await send_message(chat_id, (
                         f"✅ *Bahan Baku Baru Ditambahkan!*\n\n"
                         f"🧵 {material.name}\n"

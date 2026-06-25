@@ -13,6 +13,7 @@ from app.models.marketplace import Marketplace
 from app.models.sale import Sale
 from app.models.production import Production
 from app.models.transaction import Transaction
+from app.services import google_sheets_service
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +272,27 @@ class KonveksiService:
 
         db.commit()
         db.refresh(sale)
+
+        # Sync to Google Sheets
+        try:
+            google_sheets_service.append_penjualan(
+                tanggal=sale.date,
+                produk=product.name if product else "",
+                marketplace=marketplace.name if marketplace else "",
+                qty=quantity,
+                harga_per_unit=price_per_unit,
+                revenue=total_revenue,
+                hpp=total_hpp,
+                fee=marketplace_fee,
+                ongkir=shipping_cost,
+                laba=profit,
+                order_id=data.get("order_id", ""),
+                status="completed",
+                tgl_cair=settlement_date or "",
+            )
+        except Exception as e:
+            logger.warning("Failed to sync penjualan to Google Sheets: %s", e)
+
         return sale
 
     @staticmethod
@@ -348,6 +370,20 @@ class KonveksiService:
 
         db.commit()
         db.refresh(production)
+
+        # Sync to Google Sheets
+        try:
+            google_sheets_service.append_produksi(
+                tanggal=production.date,
+                produk=product.name if product else "",
+                qty=quantity,
+                biaya_per_unit=cost_per_unit,
+                total_biaya=total_cost,
+                catatan=data.get("notes", ""),
+            )
+        except Exception as e:
+            logger.warning("Failed to sync produksi to Google Sheets: %s", e)
+
         return production
 
     # ==================== REPORTS ====================
