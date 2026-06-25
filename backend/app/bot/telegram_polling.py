@@ -100,7 +100,12 @@ async def send_message(chat_id: str, text: str, reply_markup: dict = None) -> No
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code != 200:
-                logger.warning("Telegram sendMessage failed: %s", resp.text[:200])
+                # If Markdown parsing fails, retry without parse_mode
+                logger.warning("Telegram sendMessage failed (Markdown), retrying plain text")
+                payload.pop("parse_mode", None)
+                resp2 = await client.post(url, json=payload)
+                if resp2.status_code != 200:
+                    logger.warning("Telegram sendMessage failed again: %s", resp2.text[:200])
     except Exception as exc:
         logger.error("Failed to send Telegram message: %s", exc)
 
