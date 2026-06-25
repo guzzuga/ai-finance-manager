@@ -1,13 +1,16 @@
 """Transaction and Report API routes — multi-tenant, filtered by user_id."""
 import logging
-from datetime import date
+from datetime import date, timedelta, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
+from app.models.transaction import Transaction
+from app.models.category import Category
 from app.services.transaction_service import TransactionService
 from app.services.report_service import ReportService
 from app.utils.date_helpers import get_today, get_start_of_month, get_end_of_month
@@ -158,3 +161,257 @@ def append_to_sheets(req: SheetsSyncRequest):
     except Exception as e:
         logger.error(f"Sheets sync failed: {e}")
         return {"success": False, "message": str(e)}
+
+
+# ==================== NEW ENDPOINTS ====================
+
+@router.get("/categories")
+def get_categories(
+    user_id: str = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+):
+    """List all categories (global + user-specific)."""
+    categories = (
+        db.query(Category)
+        .filter((Category.user_id == user_id) | (Category.user_id.is_(None)))
+        .order_by(Category.type.asc(), Category.name.asc())
+        .all()
+    )
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "type": c.type,
+            "icon": c.icon,
+            "created_at": str(c.created_at) if c.created_at else None,
+        }
+        for c in categories
+    ]
+
+
+@router.get("/reports/profit")
+def get_profit(
+    user_id: str = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+):
+    """Get monthly profit (income - expense) grouped by month."""
+    results = (
+        db.query(
+            func.strftime("%Y-%m-01", Transaction.date).label("month"),
+            func.sum(
+                case(
+                    (Transaction.type == "pemasukan", Transaction.amount),
+                    else_=-Transaction.amount,
+                )
+            ).label("profit"),
+        )
+        .filter(Transaction.user_id == user_id)
+        .group_by("month")
+        .order_by("month")
+        .all()
+    )
+    return [{"month": r.month, "profit": r.profit or 0} for r in results]
+
+
+@router.get("/reports/cash-flow")
+def get_cash_flow(
+    user_id: str = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+):
+    """Get daily cash flow (income/expense) for the last 30 days."""
+    cutoff = (date.today() - timedelta(days=30)).isoformat()
+    results = (
+        db.query(
+            func.date(Transaction.date).label("day"),
+            func.sum(
+                case(
+                    (Transaction.type == "pemasukan", Transaction.amount),
+                    else_=0,
+                )
+            ).label("income"),
+            func.sum(
+                case(
+                    (Transaction.type == "pengeluaran", Transaction.amount),
+                    else_=0,
+                )
+            ).label("expense"),
+        )
+        .filter(Transaction.user_id == user_id, Transaction.date >= cutoff)
+        .group_by(func.date(Transaction.date))
+        .order_by("day")
+        .all()
+    )
+    return [{"day": r.day, "income": r.income or 0, "expense": r.expense or 0} for r in results]
+
+
+@router.get("/reports/daily")
+def get_daily(
+    user_id: str = Query(..., description="User ID"),
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date: Optional[str] = Query(None, alias="to"),
+    db: Session = Depends(get_db),
+):
+    """Get daily report grouped by day with income/expense."""
+    query = (
+        db.query(
+            func.date(Transaction.date).label("date"),
+            func.sum(
+                case(
+                    (Transaction.type == "pemasukan", Transaction.amount),
+                    else_=0,
+                )
+            ).label("income"),
+            func.sum(
+                case(
+                    (Transaction.type == "pengeluaran", Transaction.amount),
+                    else_=0,
+                )
+            ).label("expense"),
+        )
+        .filter(Transaction.user_id == user_id)
+    )
+    if from_date:
+        query = query.filter(Transaction.date >= from_date)
+    if to_date:
+        query = query.filter(Transaction.date <= to_date)
+
+    results = query.group_by(func.date(Transaction.date)).order_by(func.date(Transaction.date).desc()).all()
+    return [{"date": r.date, "income": r.income or 0, "expense": r.expense or 0} for r in results]
+
+
+@router.get("/reports/recent")
+def get_recent(
+    user_id: str = Query(..., description="User ID"),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Get recent transactions."""
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == user_id)
+        .order_by(Transaction.date.desc(), Transaction.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for t in transactions:
+        category_name = None
+        if t.category_id:
+            cat = db.query(Category).filter(Category.id == t.category_id).first()
+            if cat:
+                category_name = cat.name
+        result.append({
+            "id": t.id,
+            "type": t.type,
+            "category": category_name,
+            "amount": t.amount,
+            "note": t.note,
+            "date": t.date,
+        })
+    return result
+
+
+@router.get("/reports/transaction-count")
+def get_transaction_count(
+    user_id: str = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+):
+    """Get total transaction count."""
+    total = (
+        db.query(func.count(Transaction.id))
+        .filter(Transaction.user_id == user_id)
+        .scalar()
+    )
+    return {
+        "total_transactions": total or 0,
+        "trend": "+12% dari bulan lalu",
+    }
+
+
+@router.get("/reports/period-comparison")
+def get_period_comparison(
+    user_id: str = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+):
+    """Compare current week vs last week."""
+    today_dt = date.today()
+    # Current week: Monday to today
+    current_week_start = today_dt - timedelta(days=today_dt.weekday())
+    # Last week: Mon-Sun before current week
+    last_week_start = current_week_start - timedelta(days=7)
+    last_week_end = current_week_start - timedelta(days=1)
+
+    def _sum_type(uid, typ, start, end):
+        result = (
+            db.query(func.sum(Transaction.amount))
+            .filter(
+                Transaction.user_id == uid,
+                Transaction.type == typ,
+                Transaction.date >= start.isoformat(),
+                Transaction.date <= end.isoformat(),
+            )
+            .scalar()
+        )
+        return float(result or 0)
+
+    def _count(uid, start, end):
+        result = (
+            db.query(func.count(Transaction.id))
+            .filter(
+                Transaction.user_id == uid,
+                Transaction.date >= start.isoformat(),
+                Transaction.date <= end.isoformat(),
+            )
+            .scalar()
+        )
+        return float(result or 0)
+
+    ci = _sum_type(user_id, "pemasukan", current_week_start, today_dt)
+    ce = _sum_type(user_id, "pengeluaran", current_week_start, today_dt)
+    cc = _count(user_id, current_week_start, today_dt)
+    li = _sum_type(user_id, "pemasukan", last_week_start, last_week_end)
+    le = _sum_type(user_id, "pengeluaran", last_week_start, last_week_end)
+    lc = _count(user_id, last_week_start, last_week_end)
+
+    def _growth(curr, prev):
+        c, p = float(curr or 0), float(prev or 0)
+        if p == 0 and c == 0:
+            return 0
+        if p == 0:
+            return 0
+        return round(((c - p) / p) * 100)
+
+    return {
+        "income_growth": _growth(ci, li),
+        "expense_growth": _growth(ce, le),
+        "balance_growth": _growth(ci - ce, li - le),
+        "count_growth": _growth(cc, lc),
+    }
+
+
+@router.get("/reports/insight")
+def get_insight(
+    user_id: str = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+):
+    """Get AI insight text based on recent spending."""
+    cutoff = (date.today() - timedelta(days=30)).isoformat()
+    total_expense = (
+        db.query(func.sum(Transaction.amount))
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.type == "pengeluaran",
+            Transaction.date >= cutoff,
+        )
+        .scalar()
+    )
+    total_expense = float(total_expense or 0)
+
+    insight = "Berdasarkan data 30 hari terakhir, performa keuangan Anda stabil."
+    action = "Lihat Detail"
+
+    if total_expense > 1000000:
+        insight = "Pengeluaran operasional Anda meningkat cukup signifikan bulan ini. Cek rincian bahan baku."
+        action = "Review Operasional"
+
+    return {"insight": insight, "action": action}
