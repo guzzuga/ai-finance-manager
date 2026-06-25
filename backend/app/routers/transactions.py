@@ -4,6 +4,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -120,3 +121,40 @@ def reset_user_data(
     except Exception as e:
         logger.error(f"Reset failed: {e}")
         raise HTTPException(status_code=500, detail="Gagal reset data")
+
+
+class SheetsSyncRequest(BaseModel):
+    tanggal: str
+    jenis: str  # "pemasukan" or "pengeluaran"
+    kategori: str
+    nominal: int
+    catatan: str
+    sumber: str = "web"
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    price_per_unit: Optional[int] = None
+
+
+@router.post("/google-sheets/append")
+def append_to_sheets(req: SheetsSyncRequest):
+    """Append a transaction row to Google Sheets (called by dashboard)."""
+    try:
+        from app.services import google_sheets_service
+        result = google_sheets_service.append_transaction(
+            tanggal=req.tanggal,
+            jenis=req.jenis,
+            kategori=req.kategori,
+            nominal=req.nominal,
+            catatan=req.catatan,
+            sumber=req.sumber,
+            quantity=req.quantity,  # type: ignore[arg-type]
+            unit=req.unit,  # type: ignore[arg-type]
+            price_per_unit=req.price_per_unit,  # type: ignore[arg-type]
+        )
+        if result:
+            return {"success": True, "message": "Synced to Google Sheets"}
+        else:
+            return {"success": False, "message": "Failed to sync to Google Sheets"}
+    except Exception as e:
+        logger.error(f"Sheets sync failed: {e}")
+        return {"success": False, "message": str(e)}
