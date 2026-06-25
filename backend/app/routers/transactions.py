@@ -59,6 +59,62 @@ def get_transactions(
     return result
 
 
+class CreateTransactionRequest(BaseModel):
+    user_id: str
+    type: str  # pemasukan or pengeluaran
+    category: str = "lainnya"
+    amount: float
+    note: str = ""
+    date: str = ""
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    price_per_unit: Optional[float] = None
+
+
+@router.post("/transactions")
+def create_transaction_endpoint(
+    body: CreateTransactionRequest,
+    db: Session = Depends(get_db),
+):
+    """Create a new transaction via API."""
+    parsed = {
+        "type": body.type,
+        "category": body.category,
+        "amount": body.amount,
+        "note": body.note,
+        "date": body.date or get_today(),
+        "quantity": body.quantity,
+        "unit": body.unit,
+        "price_per_unit": body.price_per_unit,
+    }
+    txn = TransactionService.create_transaction(db, body.user_id, parsed)
+    return {
+        "id": txn.id,
+        "type": txn.type,
+        "amount": txn.amount,
+        "note": txn.note,
+        "date": txn.date,
+        "success": True,
+    }
+
+
+@router.delete("/transactions/{transaction_id}")
+def delete_transaction_endpoint(
+    transaction_id: str,
+    user_id: str = Query(..., description="User ID"),
+    db: Session = Depends(get_db),
+):
+    """Delete a transaction by ID."""
+    # Verify ownership
+    txn = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if str(txn.user_id) != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    success = TransactionService.delete_transaction(db, transaction_id)
+    return {"success": success, "message": f"Transaction {transaction_id} deleted"}
+
+
 @router.get("/reports/summary")
 def get_summary(
     user_id: str = Query(..., description="User ID"),
