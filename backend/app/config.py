@@ -25,24 +25,42 @@ MATON_CONN_ID = os.getenv("MATON_CONN_ID", "fb38cb52-9379-452c-8ead-30a3507e8f5c
 SHEET_PEMASUKAN = os.getenv("SHEET_PEMASUKAN", "1Dllu_MVlpxtYb19E_NA9nsOSPruvXuK29QM4tDm1xtg")
 SHEET_PENGELUARAN = os.getenv("SHEET_PENGELUARAN", "1S_tOg_QdZgMV37Wm5Flzu2_c31IFZwqLSgzJ4RmIom0")
 
-# Default categories
+# Default categories — KONVEKSI BUSINESS
 DEFAULT_CATEGORIES = [
-    # Pengeluaran
-    {"name": "makanan", "type": "pengeluaran", "icon": "🍚", "keywords": ["makan", "nasi", "mie", "soto", "bakso", "ayam", "ikan", "roti", "snack", "jajan", "kopi", "teh", "minum", "es", "buah", "sayur"]},
-    {"name": "transport", "type": "pengeluaran", "icon": "🚗", "keywords": ["grab", "gojek", "ojek", "bensin", "parkir", "tol", "bus", "kereta", "taxi", "angkot", "bensin", "solar"]},
-    {"name": "rumah", "type": "pengeluaran", "icon": "🏠", "keywords": ["listrik", "air", "gas", "internet", "wifi", "kos", "kontrakan", "sewa", "perbaikan", "bersih"]},
-    {"name": "belanja", "type": "pengeluaran", "icon": "🛒", "keywords": ["belanja", "supermarket", "minimarket", "indomaret", "alfamart", "pasar", "toko"]},
-    {"name": "pakaian", "type": "pengeluaran", "icon": "👕", "keywords": ["baju", "celana", "sepatu", "sandal", "jaket", "topi", "kaus", "kemeja"]},
-    {"name": "kesehatan", "type": "pengeluaran", "icon": "💊", "keywords": ["obat", "dokter", "rumah sakit", "apotek", "vitamin", "masker", "hand sanitizer"]},
-    {"name": "hiburan", "type": "pengeluaran", "icon": "🎮", "keywords": ["nonton", "bioskop", "game", "netflix", "spotify", "karaoke", "liburan", "wisata"]},
-    {"name": "pendidikan", "type": "pengeluaran", "icon": "📚", "keywords": ["buku", "sekolah", "kursus", "les", "kuliah", "ujian", "alat tulis"]},
-    {"name": "komunikasi", "type": "pengeluaran", "icon": "📱", "keywords": ["pulsa", "kuota", "internet", "telepon", "sms", "paket data"]},
-    {"name": "lainnya", "type": "pengeluaran", "icon": "📦", "keywords": ["lainnya", "lain", "dll", "lain-lain"]},
-    # Pemasukan
-    {"name": "gaji", "type": "pemasukan", "icon": "💰", "keywords": ["gaji", "gajian", "salary", "upah", "honorer"]},
-    {"name": "freelance", "type": "pemasukan", "icon": "💻", "keywords": ["freelance", "proyek", "project", "order", "pesanan"]},
-    {"name": "jualan", "type": "pemasukan", "icon": "🛍️", "keywords": ["jualan", "jual", "dagang", "toko", "lapak", "olshop"]},
-    {"name": "transfer_masuk", "type": "pemasukan", "icon": "📥", "keywords": ["transfer", "kiriman", "terima", "masuk"]},
-    {"name": "investasi", "type": "pemasukan", "icon": "📈", "keywords": ["dividen", "bunga", "saham", "crypto", "deposito"]},
-    {"name": "lainnya_masuk", "type": "pemasukan", "icon": "💵", "keywords": ["cashback", "refund", "bonus", "THR", "hadiah"]},
+    # Pengeluaran (Biaya Bisnis)
+    {"name": "bahan_baku", "type": "pengeluaran", "icon": "🧵", "keywords": ["kain", "benang", "kancing", "resleting", "furing", "label", "bahan", "kain katun", "kain tropical", "kain drill", "kain oxford", "kain satin", "kain blacu", "interfacing", "vlieseline"]},
+    {"name": "biaya_produksi", "type": "pengeluaran", "icon": "🏭", "keywords": ["jahit", "sablon", "potong", "obras", "setrika", "qc", "produksi", "upah jahit", "upah potong", "upah sablon", "upah obras", "konveksi", "penjahit", "tukang jahit"]},
+    {"name": "operasional", "type": "pengeluaran", "icon": "⚙️", "keywords": ["listrik", "air", "internet", "wifi", "sewa", "telepon", "pulsa", "token", "pln", "pdam", "kos", "kontrakan"]},
+    {"name": "perlengkapan", "type": "pengeluaran", "icon": "🔧", "keywords": ["mesin jahit", "mesin obras", "gunting", "penggaris", "meja", "kursi", "pola", "cutting table", "benang gulung", "spool", "jarum"]},
+    {"name": "packaging", "type": "pengeluaran", "icon": "📦", "keywords": ["plastik", "kardus", "selotip", "label", "hangtag", "stiker", "packing", "kemasan", "bubble wrap", "paper bag"]},
+    {"name": "ongkir", "type": "pengeluaran", "icon": "🚚", "keywords": ["ongkir", "ongkos kirim", "kurir", "ekspedisi", "jne", "jnt", "sicepat", "anteraja", "grab", "gojek", "pengiriman", "kirim barang"]},
+    {"name": "marketplace_fee", "type": "pengeluaran", "icon": "🏪", "keywords": ["fee shopee", "fee tokopedia", "fee tiktok", "komisi marketplace", "admin fee", "biaya platform", "layanan shopee", "layanan tokopedia"]},
+    {"name": "marketing", "type": "pengeluaran", "icon": "📣", "keywords": ["iklan", "promosi", "endorse", "ads", "facebook ads", "instagram ads", "tiktok ads", "shopee ads", "tokopedia ads", "marketing", "boost"]},
+    {"name": "gaji_karyawan", "type": "pengeluaran", "icon": "👷", "keywords": ["gaji", "upah karyawan", "thr", "bonus karyawan", "insentif", "karyawan", "pegawai", "buruh"]},
+    {"name": "lainnya_biaya", "type": "pengeluaran", "icon": "📋", "keywords": ["lainnya", "lain", "dll", "administrasi", "bank", "transfer", "biaya lain"]},
+    # Pemasukan (Revenue)
+    {"name": "penjualan_online", "type": "pemasukan", "icon": "🛒", "keywords": ["shopee", "tokopedia", "tiktok shop", "lazada", "bukalapak", "blibli", "online", "marketplace", "olshop", "e-commerce"]},
+    {"name": "penjualan_offline", "type": "pemasukan", "icon": "🏪", "keywords": ["toko", "offline", "langsung", "datang", "cash", "tunai", "warung", "kios"]},
+    {"name": "pesanan_custom", "type": "pemasukan", "icon": "✂️", "keywords": ["seragam", "custom", "order", "pesanan", "jasa jahit", "jasa sablon", "almamater", "pramuka", "batik", "kerja", "korporat", "instansi", "sekolah"]},
+    {"name": "DP_pesanan", "type": "pemasukan", "icon": "💰", "keywords": ["dp", "uang muka", "down payment", "tanda jadi", "booking", "pelunasan", "cicilan"]},
+    {"name": "transfer_masuk", "type": "pemasukan", "icon": "📥", "keywords": ["transfer", "kiriman", "terima", "masuk", "mutasi masuk"]},
+    {"name": "lainnya_masuk", "type": "pemasukan", "icon": "💵", "keywords": ["cashback", "refund", "bonus", "hadiah", "lainnya masuk"]},
+]
+
+# Product categories for konveksi
+PRODUCT_CATEGORIES = [
+    {"name": "Seragam SD", "icon": "👕"},
+    {"name": "Seragam SMP", "icon": "👕"},
+    {"name": "Seragam SMA", "icon": "👕"},
+    {"name": "Seragam Pramuka", "icon": "🏕️"},
+    {"name": "Seragam Batik", "icon": "🎭"},
+    {"name": "Seragam Kerja", "icon": "👔"},
+    {"name": "Almamater", "icon": "🎓"},
+    {"name": "Jas", "icon": "🤵"},
+    {"name": "Celana", "icon": "👖"},
+    {"name": "Kaos", "icon": "👕"},
+    {"name": "Kemeja", "icon": "👔"},
+    {"name": "Topi", "icon": "🧢"},
+    {"name": "Wearpack", "icon": "🦺"},
+    {"name": "Lainnya", "icon": "📦"},
 ]

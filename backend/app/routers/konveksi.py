@@ -4,9 +4,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
+from app.models.product import Product
+from app.models.sale import Sale
+from app.models.product_category import ProductCategory
 from app.services.konveksi_service import KonveksiService
 
 router = APIRouter(prefix="/api/konveksi", tags=["konveksi"])
@@ -190,3 +194,83 @@ def get_low_stock(user_id: Optional[str] = None, db: Session = Depends(get_db)):
         "products": KonveksiService.get_low_stock_products(db, user_id),
         "materials": KonveksiService.get_low_stock_materials(db, user_id),
     }
+
+@router.get("/reports/sales-by-category")
+def get_sales_by_category(
+    user_id: str = Query(...),
+    start_date: str = Query(default=None),
+    end_date: str = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Get sales breakdown by product category (for donut chart)."""
+    if not start_date:
+        start_date = date.today().replace(day=1).isoformat()
+    if not end_date:
+        end_date = date.today().isoformat()
+
+    results = (
+        db.query(
+            Product.category,
+            func.sum(Sale.quantity).label("total_qty"),
+            func.sum(Sale.total_revenue).label("total_revenue"),
+            func.sum(Sale.profit).label("total_profit"),
+            func.count(Sale.id).label("order_count"),
+        )
+        .join(Product, Sale.product_id == Product.id)
+        .filter(Sale.user_id == user_id)
+        .filter(Sale.date >= start_date)
+        .filter(Sale.date <= end_date)
+        .group_by(Product.category)
+        .order_by(func.sum(Sale.total_revenue).desc())
+        .all()
+    )
+
+    return [
+        {
+            "category": r.category or "Lainnya",
+            "total_qty": int(r.total_qty or 0),
+            "total_revenue": int(r.total_revenue or 0),
+            "total_profit": int(r.total_profit or 0),
+            "order_count": int(r.order_count or 0),
+        }
+        for r in results
+    ]
+
+
+# ==================== PRODUCT CATEGORIES ====================
+
+@router.get("/product-categories")
+def list_product_categories(db: Session = Depends(get_db)):
+    """List all product categories."""
+    cats = db.query(ProductCategory).order_by(ProductCategory.name).all()
+    return [{"id": c.id, "name": c.name, "icon": c.icon} for c in cats]
+
+
+class ProductCategoryRequest(BaseModel):
+    name: str
+    icon: str = "📦"
+
+
+@router.post("/product-categories")
+def create_product_category(req: ProductCategoryRequest, db: Session = Depends(get_db)):
+    """Create a new product category."""
+    import uuid as _uuid
+    existing = db.query(ProductCategory).filter(ProductCategory.name == req.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Kategori sudah ada")
+    cat = ProductCategory(id=str(_uuid.uuid4()), name=req.name, icon=req.icon)
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return {"id": cat.id, "name": cat.name, "icon": cat.icon}
+
+
+@router.delete("/product-categories/{category_id}")
+def delete_product_category(category_id: str, db: Session = Depends(get_db)):
+    """Delete a product category."""
+    cat = db.query(ProductCategory).filter(ProductCategory.id == category_id).first()
+    if not cat:
+        raise HTTPException(status_code=404, detail="Kategori tidak ditemukan")
+    db.delete(cat)
+    db.commit()
+    return {"message": "Kategori dihapus"}

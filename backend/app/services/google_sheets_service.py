@@ -74,6 +74,33 @@ def _find_next_row(sheet_id: str) -> int:
     return last_occupied + 1
 
 
+def setup_konveksi_headers() -> bool:
+    """Set up headers for konveksi sheets (Penjualan_Konveksi, Produksi, Bahan_Baku)."""
+    # Penjualan_Konveksi
+    _make_request(SHEET_PEMASUKAN, "/values/" + SHEET_PENJUALAN + "!A1:N1?valueInputOption=USER_ENTERED", "PUT", {
+        "values": [["PENJUALAN KONVEKSI", "", "", "", "", "", "", "", "", "", "", "", "", ""]]
+    })
+    _make_request(SHEET_PEMASUKAN, "/values/" + SHEET_PENJUALAN + "!A3:N3?valueInputOption=USER_ENTERED", "PUT", {
+        "values": [["No", "Tanggal", "Produk", "Marketplace", "Qty", "Harga/Unit", "Revenue", "HPP", "Fee", "Ongkir", "Laba", "Order ID", "Status", "Tgl Cair"]]
+    })
+    # Produksi
+    _make_request(SHEET_PEMASUKAN, "/values/" + SHEET_PRODUKSI + "!A1:G1?valueInputOption=USER_ENTERED", "PUT", {
+        "values": [["PRODUKSI", "", "", "", "", "", ""]]
+    })
+    _make_request(SHEET_PEMASUKAN, "/values/" + SHEET_PRODUKSI + "!A3:G3?valueInputOption=USER_ENTERED", "PUT", {
+        "values": [["No", "Tanggal", "Produk", "Qty", "Biaya/Unit", "Total Biaya", "Catatan"]]
+    })
+    # Bahan_Baku
+    _make_request(SHEET_PEMASUKAN, "/values/" + SHEET_BAHAN + "!A1:I1?valueInputOption=USER_ENTERED", "PUT", {
+        "values": [["BAHAN BAKU", "", "", "", "", "", "", "", ""]]
+    })
+    _make_request(SHEET_PEMASUKAN, "/values/" + SHEET_BAHAN + "!A3:I3?valueInputOption=USER_ENTERED", "PUT", {
+        "values": [["No", "Tanggal", "Nama", "Satuan", "Qty", "Harga/Unit", "Total", "Supplier", "Catatan"]]
+    })
+    logger.info("Konveksi sheet headers set up")
+    return True
+
+
 def setup_headers() -> bool:
     """Set up the full header structure on both sheets."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -98,12 +125,12 @@ def setup_headers() -> bool:
             ]
         })
 
-        # Row 4 — Summary formulas
+        # Row 4 — Summary formulas (Indonesian locale uses semicolons)
         _make_request(sid, "/values/Sheet1!A4:J4?valueInputOption=USER_ENTERED", "PUT", {
             "values": [[
                 f'=SUM(E{DATA_START_ROW}:E2000)', "", "",
                 f'=COUNTA(B{DATA_START_ROW}:B2000)', "",
-                f'=IF(COUNTA(B{DATA_START_ROW}:B2000)>0, SUM(E{DATA_START_ROW}:E2000)/COUNTA(B{DATA_START_ROW}:B2000), 0)', "",
+                f'=IFERROR(AVERAGE(E{DATA_START_ROW}:E2000); 0)', "",
                 "", "", ""
             ]]
         })
@@ -116,7 +143,7 @@ def setup_headers() -> bool:
         })
 
         # Row 6 — TOTAL row
-        _make_request(sid, f"/values/Sheet1!A6:J6?valueInputOption=USER_ENTERED", "PUT", {
+        _make_request(sid, "/values/Sheet1!A6:J6?valueInputOption=USER_ENTERED", "PUT", {
             "values": [[
                 "", "", "", "TOTAL", f"=SUM(E{DATA_START_ROW}:E2000)", "", "", "", "", ""
             ]]
@@ -306,17 +333,17 @@ def append_bahan_baku(
 def clear_konveksi_data() -> bool:
     """Clear all konveksi sheets (Penjualan_Konveksi, Produksi, Bahan_Baku). Keep headers."""
     konveksi_sheets = [
-        ("Penjualan_Konveksi", SHEET_PENJUALAN),
-        ("Produksi", SHEET_PRODUKSI),
-        ("Bahan_Baku", SHEET_BAHAN),
+        ("Penjualan_Konveksi", SHEET_PENJUALAN, "N"),  # 14 columns A-N
+        ("Produksi", SHEET_PRODUKSI, "G"),              # 7 columns A-G
+        ("Bahan_Baku", SHEET_BAHAN, "I"),               # 9 columns A-I
     ]
     
-    for label, sheet_name in konveksi_sheets:
-        # Clear rows 4 to 200 (konveksi data starts at row 4)
-        empty_rows = [[""] * 10 for _ in range(197)]
+    for label, sheet_name, end_col in konveksi_sheets:
+        col_count = ord(end_col) - ord('A') + 1
+        empty_rows = [[""] * col_count for _ in range(197)]
         result = _make_request(
-            SHEET_PEMASUKAN,  # All konveksi sheets are in Pemasukan spreadsheet
-            f"/values/{sheet_name}!A4:J200?valueInputOption=USER_ENTERED",
+            SHEET_PEMASUKAN,
+            f"/values/{sheet_name}!A4:{end_col}200?valueInputOption=USER_ENTERED",
             method="PUT",
             data={"values": empty_rows},
         )

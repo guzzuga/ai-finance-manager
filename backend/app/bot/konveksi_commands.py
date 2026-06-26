@@ -3,13 +3,14 @@ import logging
 from datetime import date
 
 from app.services.konveksi_service import KonveksiService
+from app.services.konveksi_parser import parse_indonesian_amount
 from app.bot.konveksi_formatter import KonveksiFormatter
 from app.utils.date_helpers import get_today, get_start_of_month, get_end_of_month
 
 logger = logging.getLogger(__name__)
 
 
-async def handle_konveksi_command(command: str, chat_id: str, user_id: str, db, send_message) -> bool:
+async def handle_konveksi_command(command: str, chat_id: str, user_id: str, db, send_message, original_text: str = "") -> bool:
     """Handle konveksi-related commands. Returns True if command was handled."""
 
     # === STOK PRODUK ===
@@ -45,7 +46,9 @@ async def handle_konveksi_command(command: str, chat_id: str, user_id: str, db, 
 
     # === TAMBAH PRODUK ===
     if command.startswith("/tambah_produk"):
-        parts = command.split(maxsplit=1)
+        # Use original_text if available (preserves arguments), else fallback to command
+        raw = command if " " in command else (original_text if " " in original_text else command)
+        parts = raw.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             await send_message(chat_id, (
                 "📦 *Tambah Produk*\n\n"
@@ -59,9 +62,9 @@ async def handle_konveksi_command(command: str, chat_id: str, user_id: str, db, 
         try:
             args = parts[1].strip().split("|")
             name = args[0].strip()
-            hpp = int(args[1].strip()) if len(args) > 1 else 0
-            price = int(args[2].strip()) if len(args) > 2 else 0
-            stock = int(args[3].strip()) if len(args) > 3 else 0
+            hpp = parse_indonesian_amount(args[1]) if len(args) > 1 else 0
+            price = parse_indonesian_amount(args[2]) if len(args) > 2 else 0
+            stock = int(parse_indonesian_amount(args[3])) if len(args) > 3 else 0
 
             product = KonveksiService.create_product(db, {
                 "name": name,
@@ -90,14 +93,15 @@ async def handle_konveksi_command(command: str, chat_id: str, user_id: str, db, 
 
     # === TAMBAH BAHAN BAKU ===
     if command.startswith("/tambah_bahan"):
-        parts = command.split(maxsplit=1)
+        raw = command if " " in command else (original_text if " " in original_text else command)
+        parts = raw.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             await send_message(chat_id, (
                 "🧵 *Tambah Bahan Baku*\n\n"
-                "Format: `/tambah_bahan NAMA | UNIT | STOK | HARGA/UNIT`\n\n"
+                "Format: `/tambah_bahan NAMA | UNIT | STOK | HARGA TOTAL`\n\n"
                 "Contoh:\n"
-                "• `/tambah_bahan Kain Katun | meter | 50 | 25000`\n"
-                "• `/tambah_bahan Benang | roll | 10 | 15000`"
+                "• `/tambah_bahan Kain Katun | meter | 50 | 1,25 juta`\n"
+                "• `/tambah_bahan Benang | roll | 10 | 150rb`"
             ))
             return True
 
@@ -105,8 +109,13 @@ async def handle_konveksi_command(command: str, chat_id: str, user_id: str, db, 
             args = parts[1].strip().split("|")
             name = args[0].strip()
             unit = args[1].strip() if len(args) > 1 else "meter"
-            stock = float(args[2].strip()) if len(args) > 2 else 0
-            price = int(args[3].strip()) if len(args) > 3 else 0
+            stock = float(parse_indonesian_amount(args[2])) if len(args) > 2 else 0
+            price_raw = parse_indonesian_amount(args[3]) if len(args) > 3 else 0
+            # If price looks like total (stock > 1 and price > stock * 1000), auto-calculate per unit
+            if stock > 1 and price_raw > stock:
+                price = round(price_raw / stock)
+            else:
+                price = price_raw
 
             material = KonveksiService.create_material(db, {
                 "name": name,
@@ -117,11 +126,15 @@ async def handle_konveksi_command(command: str, chat_id: str, user_id: str, db, 
             })
 
             price_str = f"Rp {price:,.0f}".replace(",", ".")
+            total_str = f"Rp {price_raw:,.0f}".replace(",", ".")
+            detail = f"💰 Harga: {price_str}/{unit}"
+            if price != price_raw:
+                detail = f"💰 Harga: {total_str} total → {price_str}/{unit}"
             await send_message(chat_id, (
                 f"✅ *Bahan Baku Ditambahkan!*\n\n"
                 f"🧵 Nama: {name}\n"
                 f"📊 Stok: {stock} {unit}\n"
-                f"💰 Harga: {price_str}/{unit}"
+                f"{detail}"
             ))
         except Exception as e:
             logger.error("Error adding material: %s", e)

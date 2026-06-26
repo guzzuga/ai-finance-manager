@@ -22,4 +22,5 @@ def init_db():
     """Create all tables."""
     from app.models import user, category, transaction  # noqa: F401
     from app.models import product, material, marketplace, sale, production  # noqa: F401
+    from app.models import product_category  # noqa: F401
     Base.metadata.create_all(bind=engine)

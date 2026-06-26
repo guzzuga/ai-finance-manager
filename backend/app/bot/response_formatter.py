@@ -51,7 +51,7 @@ memantau arus kas, menghitung keuntungan, dan mengelola bisnis konveksi.
         type_label = "Pemasukan" if transaction.type == "pemasukan" else "Pengeluaran"
 
         # Get category info
-        category_name = "lainnya"
+        category_name = "lainnya_biaya"
         if hasattr(transaction, 'category') and transaction.category:
             category_name = transaction.category.name
             if transaction.category.icon:
@@ -124,7 +124,7 @@ memantau arus kas, menghitung keuntungan, dan mengelola bisnis konveksi.
         for i, t in enumerate(transactions, 1):
             icon = "💰" if t.type == "pemasukan" else "💸"
             amount_str = f"Rp {t.amount:,.0f}".replace(",", ".")
-            category_name = "lainnya"
+            category_name = "lainnya_biaya"
             if hasattr(t, 'category') and t.category:
                 category_name = t.category.name
                 if t.category.icon:
@@ -300,7 +300,7 @@ memantau arus kas, menghitung keuntungan, dan mengelola bisnis konveksi.
             for i, t in enumerate(transactions, 1):
                 icon = "💰" if t.type == "pemasukan" else "💸"
                 amount_str = f"Rp {t.amount:,.0f}".replace(",", ".")
-                category_name = "lainnya"
+                category_name = "lainnya_biaya"
                 if hasattr(t, 'category') and t.category:
                     category_name = t.category.name
                     if t.category.icon:

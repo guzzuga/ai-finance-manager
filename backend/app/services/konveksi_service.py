@@ -1,5 +1,6 @@
 """Konveksi Service — CRUD & reports for products, materials, sales, production."""
 import uuid
+import re
 import logging
 from datetime import date
 from typing import Optional
@@ -17,6 +18,36 @@ from app.services import google_sheets_service
 
 logger = logging.getLogger(__name__)
 
+# Product category auto-detection rules
+_CATEGORY_RULES = [
+    (r'almamater', 'Almamater'),
+    (r'pramuka', 'Seragam Pramuka'),
+    (r'batik', 'Seragam Batik'),
+    (r'olah\s*raga|sport', 'Kaos Olahraga'),
+    (r'kaos\s*polos|polos', 'Kaos Polos'),
+    (r'kaos', 'Kaos'),
+    (r'kemeja', 'Kemeja'),
+    (r'jas\b', 'Jas'),
+    (r'celana', 'Celana'),
+    (r'wearpack|safety', 'Wearpack'),
+    (r'topi', 'Topi'),
+    (r'seragam\s*sd|sd\b', 'Seragam SD'),
+    (r'seragam\s*smp|smp\b', 'Seragam SMP'),
+    (r'seragam\s*sma|sma\b', 'Seragam SMA'),
+    (r'kerja|kantor|korporat', 'Seragam Kerja'),
+    (r'seragam\s*sekolah', 'Seragam SD'),
+    (r'seragam', 'Seragam Kerja'),
+]
+
+
+def detect_product_category(name: str) -> str:
+    """Auto-detect product category from name."""
+    name_lower = name.lower()
+    for pattern, category in _CATEGORY_RULES:
+        if re.search(pattern, name_lower):
+            return category
+    return 'Lainnya'
+
 
 class KonveksiService:
     """Service layer for konveksi operations."""
@@ -30,7 +61,7 @@ class KonveksiService:
             id=str(uuid.uuid4()),
             name=data["name"],
             sku=data.get("sku"),
-            category=data.get("category"),
+            category=data.get("category") or detect_product_category(data["name"]),
             hpp=data.get("hpp", 0),
             price=data.get("price", 0),
             stock=data.get("stock", 0),
@@ -255,11 +286,29 @@ class KonveksiService:
 
         # Auto-create pemasukan transaction (so it shows in general finance)
         if net_revenue > 0:
+            # Find appropriate category for konveksi sales
+            from app.models.category import Category
+            # Use penjualan_offline for Offline/Toko, penjualan_online for marketplaces
+            mp_name_lower = (marketplace.name if marketplace else "").lower()
+            if "offline" in mp_name_lower or "toko" in mp_name_lower:
+                sale_cat_name = "penjualan_offline"
+            else:
+                sale_cat_name = "penjualan_online"
+            sale_cat = db.query(Category).filter(
+                Category.name == sale_cat_name, Category.type == "pemasukan"
+            ).first()
+            # Fallback: try the other category
+            if not sale_cat:
+                fallback_name = "penjualan_online" if sale_cat_name == "penjualan_offline" else "penjualan_offline"
+                sale_cat = db.query(Category).filter(
+                    Category.name == fallback_name, Category.type == "pemasukan"
+                ).first()
             transaction = Transaction(
                 id=str(uuid.uuid4()),
                 user_id=data["user_id"],
                 date=data["date"],
                 type="pemasukan",
+                category_id=sale_cat.id if sale_cat else None,
                 amount=net_revenue,
                 note=f"Penjualan {product.name if product else ''} × {quantity} di {marketplace.name if marketplace else ''}",
                 source=data.get("source", "telegram"),
@@ -275,6 +324,7 @@ class KonveksiService:
 
         # Sync to Google Sheets
         try:
+            # 1. Sync to Penjualan_Konveksi tab
             google_sheets_service.append_penjualan(
                 tanggal=sale.date,
                 produk=product.name if product else "",
@@ -290,6 +340,20 @@ class KonveksiService:
                 status="completed",
                 tgl_cair=settlement_date or "",
             )
+            # 2. Also sync transaction to Pemasukan Sheet1
+            if net_revenue > 0:
+                cat_name = sale_cat.name if sale_cat else "penjualan_online"
+                google_sheets_service.append_transaction(
+                    tanggal=sale.date,
+                    jenis="pemasukan",
+                    kategori=cat_name,
+                    nominal=net_revenue,
+                    catatan=f"Penjualan {product.name if product else ''} x{quantity} di {marketplace.name if marketplace else ''}",
+                    sumber=data.get("source", "telegram"),
+                    quantity=quantity,
+                    unit="pcs",
+                    price_per_unit=price_per_unit,
+                )
         except Exception as e:
             logger.warning("Failed to sync penjualan to Google Sheets: %s", e)
 
@@ -373,6 +437,7 @@ class KonveksiService:
 
         # Sync to Google Sheets
         try:
+            # 1. Sync to Produksi tab
             google_sheets_service.append_produksi(
                 tanggal=production.date,
                 produk=product.name if product else "",
@@ -381,6 +446,19 @@ class KonveksiService:
                 total_biaya=total_cost,
                 catatan=data.get("notes", ""),
             )
+            # 2. Also sync transaction to Pengeluaran Sheet1
+            if total_cost > 0:
+                google_sheets_service.append_transaction(
+                    tanggal=production.date,
+                    jenis="pengeluaran",
+                    kategori="biaya_produksi",
+                    nominal=total_cost,
+                    catatan=f"Produksi {product.name if product else ''} x{quantity}",
+                    sumber=data.get("source", "telegram"),
+                    quantity=quantity,
+                    unit="pcs",
+                    price_per_unit=cost_per_unit,
+                )
         except Exception as e:
             logger.warning("Failed to sync produksi to Google Sheets: %s", e)
 

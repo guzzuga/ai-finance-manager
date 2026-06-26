@@ -225,7 +225,7 @@ async def send_document(chat_id: str, file_path: str, caption: str = "") -> None
         logger.error("Failed to send document: %s", exc)
 
 
-async def handle_command(command: str, chat_id: str, user_id: str, db) -> None:
+async def handle_command(command: str, chat_id: str, user_id: str, db, full_text: str = "") -> None:
     """Handle bot commands and send the reply."""
     today = get_today()
 
@@ -236,12 +236,12 @@ async def handle_command(command: str, chat_id: str, user_id: str, db) -> None:
 
     # === CATAT PEMASUKAN ===
     if command == "/catat_pemasukan":
-        await send_message(chat_id, "➕ *Catat Pemasukan*\n\nKirim pesan dengan format:\n• `gaji 5 juta`\n• `freelance desain web 2 jt`\n• `jualan kaos 500rb`\n\nAtau ketik langsung nominalnya:")
+        await send_message(chat_id, "➕ *Catat Pemasukan*\n\nKirim pesan dengan format:\n• `jual seragam SD 20 pcs 85rb`\n• `order almamater 50 pcs 120rb`\n• `DP pesanan 500rb`\n\nAtau ketik langsung nominalnya:")
         return
 
     # === CATAT PENGELUARAN ===
     if command == "/catat_pengeluaran":
-        await send_message(chat_id, "➖ *Catat Pengeluaran*\n\nKirim pesan dengan format:\n• `makan siang 25rb`\n• `grab ke kantor 15rb`\n• `beli baju 200rb`\n\nAtau ketik langsung nominalnya:")
+        await send_message(chat_id, "➖ *Catat Pengeluaran*\n\nKirim pesan dengan format:\n• `beli kain tropical 10 meter 2,1 juta`\n• `bayar jahit 50 pcs 750rb`\n• `ongkir JNE 35rb`\n\nAtau ketik langsung nominalnya:")
         return
 
     # === RINGKASAN BULAN INI ===
@@ -389,7 +389,7 @@ Keuntungan = Pemasukan - Pengeluaran"""
         return
 
     # === KONVEKSI COMMANDS ===
-    konveksi_handled = await handle_konveksi_command(command, chat_id, user_id, db, send_message)
+    konveksi_handled = await handle_konveksi_command(command, chat_id, user_id, db, send_message, original_text=full_text)
     if konveksi_handled:
         return
 
@@ -445,13 +445,13 @@ async def process_message(message: dict, db) -> None:
         text_lower = text.lower().strip()
         if text_lower in button_to_command:
             command = button_to_command[text_lower]
-            await handle_command(command, chat_id, user.id, db)
+            await handle_command(command, chat_id, user.id, db, full_text=text)
             return
 
         # Check if it's a /command
         if text.startswith("/"):
             command = text.split("@")[0].split()[0].lower()
-            await handle_command(command, chat_id, user.id, db)
+            await handle_command(command, chat_id, user.id, db, full_text=text)
             return
 
         # Regular message → try konveksi detection first, then parse as transaction
@@ -563,6 +563,25 @@ async def process_message(message: dict, db) -> None:
                         "user_id": user.id,
                     })
                     price_str = f"Rp {mat_data['total_price']:,.0f}".replace(",", ".")
+                    # Create pengeluaran transaction for material purchase
+                    total_price = int(mat_data["total_price"])
+                    if total_price > 0:
+                        from app.services.transaction_service import TransactionService
+                        TransactionService.create_transaction(
+                            db,
+                            user_id=user.id,
+                            parsed={
+                                "type": "pengeluaran",
+                                "amount": total_price,
+                                "category": "bahan_baku",
+                                "note": f"Beli {material.name} {mat_data['quantity']} {mat_data['unit']}",
+                                "date": str(get_today()),
+                                "quantity": mat_data["quantity"],
+                                "unit": mat_data["unit"],
+                            },
+                            raw_message=text,
+                            source="telegram",
+                        )
                     # Sync to Google Sheets
                     try:
                         google_sheets_service.append_bahan_baku(
@@ -573,6 +592,19 @@ async def process_message(message: dict, db) -> None:
                             harga_per_unit=mat_data.get("price_per_unit", 0),
                             total=mat_data["total_price"],
                         )
+                        # Also sync to Pengeluaran Sheet1
+                        if total_price > 0:
+                            google_sheets_service.append_transaction(
+                                tanggal=str(get_today()),
+                                jenis="pengeluaran",
+                                kategori="bahan_baku",
+                                nominal=total_price,
+                                catatan=f"Beli {material.name} {mat_data['quantity']} {mat_data['unit']}",
+                                sumber="telegram",
+                                quantity=mat_data["quantity"],
+                                unit=mat_data["unit"],
+                                price_per_unit=mat_data.get("price_per_unit", 0),
+                            )
                     except Exception as e:
                         logger.warning("Failed to sync bahan baku to Sheets: %s", e)
                     await send_message(chat_id, (
@@ -596,7 +628,7 @@ async def process_message(message: dict, db) -> None:
         mapped = {
             "type": parsed.get("jenis", "pengeluaran"),
             "amount": parsed.get("nominal", 0),
-            "category": parsed.get("kategori", "lainnya"),
+            "category": parsed.get("kategori", "lainnya_biaya"),
             "note": parsed.get("catatan", ""),
             "date": parsed.get("tanggal"),
             "quantity": parsed.get("quantity"),
@@ -605,7 +637,7 @@ async def process_message(message: dict, db) -> None:
 
         # Skip transactions with 0 amount
         if mapped["amount"] <= 0:
-            await send_message(chat_id, "⚠️ Nominal tidak valid. Coba format seperti: 'makan siang 25rb' atau 'gaji 5 juta'.")
+            await send_message(chat_id, "⚠️ Nominal tidak valid. Contoh: 'beli kain 5 meter 250rb' atau 'jual seragam 10 pcs 850rb'.")
             return
 
         transaction = TransactionService.create_transaction(

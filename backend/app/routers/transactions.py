@@ -37,7 +37,7 @@ def get_transactions(
     result = []
     for t in transactions:
         # Get category name
-        category_name = "lainnya"
+        category_name = "lainnya_biaya"
         if t.category_id:
             cat = db.query(Category).filter(Category.id == t.category_id).first()
             if cat:
@@ -62,7 +62,7 @@ def get_transactions(
 class CreateTransactionRequest(BaseModel):
     user_id: str
     type: str  # pemasukan or pengeluaran
-    category: str = "lainnya"
+    category: str = "lainnya_biaya"
     amount: float
     note: str = ""
     date: str = ""

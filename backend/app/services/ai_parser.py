@@ -19,13 +19,17 @@ from app.utils.categories import match_category
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT_TEMPLATE = (
-    "Kamu adalah parser keuangan. Ubah pesan user menjadi JSON. "
+    "Kamu adalah parser keuangan BISNIS KONVEKSI. Ubah pesan user menjadi JSON. "
     "Hari ini tanggal {today_date}. "
     "Selalu jawab dengan JSON valid saja, tanpa markdown, tanpa penjelasan.\n\n"
-    "Kategori pengeluaran: makanan, transport, rumah, belanja, pakaian, "
-    "kesehatan, hiburan, pendidikan, komunikasi, lainnya.\n"
-    "Kategori pemasukan: gaji, freelance, jualan, transfer_masuk, investasi, "
-    "lainnya_masuk.\n\n"
+    "Kategori pengeluaran bisnis: bahan_baku (kain, benang, kancing), "
+    "biaya_produksi (jahit, sablon, potong, obras), operasional (listrik, air, sewa), "
+    "perlengkapan (mesin jahit, gunting), packaging (plastik, kardus), "
+    "ongkir (kurir, ekspedisi), marketplace_fee (fee shopee/tokopedia), "
+    "marketing (iklan, promosi), gaji_karyawan, lainnya_biaya.\n"
+    "Kategori pemasukan bisnis: penjualan_online (shopee, tokopedia, tiktok shop), "
+    "penjualan_offline (toko, langsung), pesanan_custom (seragam, custom, jasa jahit), "
+    "DP_pesanan (uang muka, DP), transfer_masuk, lainnya_masuk.\n\n"
     "Jika ada quantity dan unit (pcs, meter, roll, kg, liter, lusin, pack, dll), "
     "masukkan juga ke output.\n\n"
     'Format: {{"tanggal":"YYYY-MM-DD","jenis":"pemasukan/pengeluaran",'
@@ -35,7 +39,9 @@ _SYSTEM_PROMPT_TEMPLATE = (
 
 _PEMASUKAN_KW = re.compile(
     r'\b(gaji|gajian|salary|terima|masuk|pendapatan|freelance|jualan|jual|'
-    r'dagang|komisi|dividen|bunga|cashback|refund|transfer\s*m|kiriman)\b',
+    r'dagang|komisi|dividen|bunga|cashback|refund|transfer\s*m|kiriman|'
+    r'laku|order|closing|dp|uang\s*muka|pesanan|seragam|custom|pelunasan|'
+    r'shopee|tokopedia|tiktok|lazada|offline|toko)\b',
     re.IGNORECASE,
 )
 
@@ -110,7 +116,7 @@ class AIParser:
             return fallback
 
         return {
-            "error": "Gagal memahami pesan. Coba format seperti: 'makan siang 25rb' atau 'gaji 5 juta'."
+            "error": "Gagal memahami pesan. Contoh: 'beli kain 5 meter 250rb' atau 'jual seragam 10 pcs 850rb'."
         }
 
     def _fallback_parse(self, message: str, today_str: str) -> Optional[dict]:

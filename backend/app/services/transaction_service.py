@@ -151,7 +151,7 @@ class TransactionService:
         source: str = "web",
     ) -> Transaction:
         """Create a transaction from parsed data."""
-        category_name = parsed.get("category", "lainnya")
+        category_name = parsed.get("category", "lainnya_biaya")
         transaction_type = parsed.get("type", "pengeluaran")
 
         # Find or create category
