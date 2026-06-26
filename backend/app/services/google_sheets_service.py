@@ -301,3 +301,28 @@ def append_bahan_baku(
         return False
     logger.info(f"✅ Bahan baku #{nomor} appended to sheet")
     return True
+
+
+def clear_konveksi_data() -> bool:
+    """Clear all konveksi sheets (Penjualan_Konveksi, Produksi, Bahan_Baku). Keep headers."""
+    konveksi_sheets = [
+        ("Penjualan_Konveksi", SHEET_PENJUALAN),
+        ("Produksi", SHEET_PRODUKSI),
+        ("Bahan_Baku", SHEET_BAHAN),
+    ]
+    
+    for label, sheet_name in konveksi_sheets:
+        # Clear rows 4 to 200 (konveksi data starts at row 4)
+        empty_rows = [[""] * 10 for _ in range(197)]
+        result = _make_request(
+            SHEET_PEMASUKAN,  # All konveksi sheets are in Pemasukan spreadsheet
+            f"/values/{sheet_name}!A4:J200?valueInputOption=USER_ENTERED",
+            method="PUT",
+            data={"values": empty_rows},
+        )
+        if "error" in result:
+            logger.error(f"Failed to clear {label}: {result['error']}")
+            return False
+        logger.info(f"✅ {label} sheet cleared")
+    
+    return True

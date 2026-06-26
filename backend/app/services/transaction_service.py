@@ -64,18 +64,34 @@ class TransactionService:
 
     @staticmethod
     def reset_user_data(db: Session, user_id: str) -> int:
-        """Delete all transactions for a user and clear Google Sheets. Returns count of deleted rows."""
-        count = db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+        """Delete all transactions and konveksi data for a user, clear Google Sheets."""
+        from app.models.product import Product
+        from app.models.material import Material
+        from app.models.sale import Sale
+        from app.models.production import Production
+        
+        # Delete transactions
+        txn_count = db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+        
+        # Delete konveksi data
+        sale_count = db.query(Sale).filter(Sale.user_id == user_id).delete()
+        prod_count = db.query(Production).filter(Production.user_id == user_id).delete()
+        mat_count = db.query(Material).filter(Material.user_id == user_id).delete()
+        pcount = db.query(Product).filter(Product.user_id == user_id).delete()
+        
         db.commit()
         
-        # Also clear Google Sheets
+        logger.info(f"Reset: {txn_count} txn, {sale_count} sales, {prod_count} productions, {mat_count} materials, {pcount} products")
+        
+        # Clear ALL Google Sheets (transactions + konveksi)
         try:
-            from app.services.google_sheets_service import clear_data
-            clear_data()  # Clear both sheets
+            from app.services.google_sheets_service import clear_data, clear_konveksi_data
+            clear_data()  # Clear Pemasukan + Pengeluaran
+            clear_konveksi_data()  # Clear Penjualan_Konveksi + Produksi + Bahan_Baku
         except Exception as e:
             logger.error(f"Failed to clear Google Sheets: {e}")
         
-        return count
+        return txn_count
 
     @staticmethod
     def add_user(db: Session, name: str, platform_id: str = None, platform: str = "telegram") -> tuple[User, str, str]:
