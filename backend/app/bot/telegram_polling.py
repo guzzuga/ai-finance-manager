@@ -537,7 +537,6 @@ async def process_message(message: dict, db) -> None:
                     # Create pengeluaran transaction for material purchase
                     total_price = int(mat_data["total_price"])
                     if total_price > 0:
-                        from app.services.transaction_service import TransactionService
                         TransactionService.create_transaction(
                             db,
                             user_id=user.id,
@@ -598,7 +597,6 @@ async def process_message(message: dict, db) -> None:
                     # Create pengeluaran transaction for material purchase
                     total_price = int(mat_data["total_price"])
                     if total_price > 0:
-                        from app.services.transaction_service import TransactionService
                         TransactionService.create_transaction(
                             db,
                             user_id=user.id,
