@@ -16,7 +16,8 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-from app.config import MATON_API_KEY, MATON_CONN_ID, SHEET_PEMASUKAN, SHEET_PENGELUARAN
+from app.config import MATON_API_KEY, MATON_CONN_ID, SHEET_PEMASUKAN
+# SHEET_PENGELUARAN deprecated — all data now in SHEET_PEMASUKAN with separate tabs
 
 logger = logging.getLogger(__name__)
 
@@ -56,15 +57,13 @@ def _make_request(sheet_id: str, path: str, method: str = "GET", data: dict = No
 
 
 def _get_sheet_id(jenis: str) -> str:
-    """Get the correct spreadsheet ID based on transaction type."""
-    if jenis == "pemasukan":
-        return SHEET_PEMASUKAN
-    return SHEET_PENGELUARAN
+    """Get the correct spreadsheet ID. All data is now in one spreadsheet."""
+    return SHEET_PEMASUKAN
 
 
-def _find_next_row(sheet_id: str) -> int:
-    """Find the next empty data row."""
-    result = _make_request(sheet_id, f"/values/Sheet1!B{DATA_START_ROW}:B2000")
+def _find_next_row(sheet_id: str, tab_name: str = "Pemasukan") -> int:
+    """Find the next empty data row in the specified tab."""
+    result = _make_request(sheet_id, f"/values/{tab_name}!B{DATA_START_ROW}:B2000")
     values = result.get("values", [])
     last_occupied = DATA_START_ROW - 1
     for i, row in enumerate(values):
@@ -102,54 +101,36 @@ def setup_konveksi_headers() -> bool:
 
 
 def setup_headers() -> bool:
-    """Set up the full header structure on both sheets."""
+    """Set up headers for Pemasukan and Pengeluaran tabs (single spreadsheet)."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    for label, sid in [("Pemasukan", SHEET_PEMASUKAN), ("Pengeluaran", SHEET_PENGELUARAN)]:
+    for label in ["Pemasukan", "Pengeluaran"]:
         upper = label.upper()
 
-        # Row 1 — Title
-        _make_request(sid, "/values/Sheet1!A1:J1?valueInputOption=USER_ENTERED", "PUT", {
+        _make_request(SHEET_PEMASUKAN, f"/values/{label}!A1:J1?valueInputOption=USER_ENTERED", "PUT", {
             "values": [[f"LAPORAN {upper} — AGUS COLLECTION", "", "", "", "", "", "", "", "", ""]]
         })
-
-        # Row 2 — Period / timestamp
-        _make_request(sid, "/values/Sheet1!A2:J2?valueInputOption=USER_ENTERED", "PUT", {
+        _make_request(SHEET_PEMASUKAN, f"/values/{label}!A2:J2?valueInputOption=USER_ENTERED", "PUT", {
             "values": [[f"Periode: Semua  |  Dicetak: {now}", "", "", "", "", "", "", "", "", ""]]
         })
-
-        # Row 3 — Summary labels
-        _make_request(sid, "/values/Sheet1!A3:J3?valueInputOption=USER_ENTERED", "PUT", {
-            "values": [
-                [f"Total {label}", "", "", "Jumlah Transaksi", "", "Rata-rata/Transaksi", "", "", "", ""]
-            ]
+        _make_request(SHEET_PEMASUKAN, f"/values/{label}!A3:J3?valueInputOption=USER_ENTERED", "PUT", {
+            "values": [[f"Total {label}", "", "", "Jumlah Transaksi", "", "Rata-rata/Transaksi", "", "", "", ""]]
         })
-
-        # Row 4 — Summary formulas (Indonesian locale uses semicolons)
-        _make_request(sid, "/values/Sheet1!A4:J4?valueInputOption=USER_ENTERED", "PUT", {
+        _make_request(SHEET_PEMASUKAN, f"/values/{label}!A4:F4?valueInputOption=USER_ENTERED", "PUT", {
             "values": [[
                 f'=SUM(E{DATA_START_ROW}:E2000)', "", "",
                 f'=COUNTA(B{DATA_START_ROW}:B2000)', "",
-                f'=IFERROR(AVERAGE(E{DATA_START_ROW}:E2000); 0)', "",
-                "", "", ""
+                f'=IFERROR(AVERAGE(E{DATA_START_ROW}:E2000); 0)'
             ]]
         })
-
-        # Row 5 — Column headers
-        _make_request(sid, "/values/Sheet1!A5:J5?valueInputOption=USER_ENTERED", "PUT", {
-            "values": [[
-                "No", "Tanggal", "Kategori", "Deskripsi", "Nominal (Rp)", "Jumlah", "Satuan", "Harga/Satuan", "Sumber", "Status"
-            ]]
+        _make_request(SHEET_PEMASUKAN, f"/values/{label}!A5:J5?valueInputOption=USER_ENTERED", "PUT", {
+            "values": [["No", "Tanggal", "Kategori", "Deskripsi", "Nominal (Rp)", "Jumlah", "Satuan", "Harga/Satuan", "Sumber", "Status"]]
+        })
+        _make_request(SHEET_PEMASUKAN, f"/values/{label}!A6:J6?valueInputOption=USER_ENTERED", "PUT", {
+            "values": [["", "", "", "TOTAL", f"=SUM(E{DATA_START_ROW}:E2000)", "", "", "", "", ""]]
         })
 
-        # Row 6 — TOTAL row
-        _make_request(sid, "/values/Sheet1!A6:J6?valueInputOption=USER_ENTERED", "PUT", {
-            "values": [[
-                "", "", "", "TOTAL", f"=SUM(E{DATA_START_ROW}:E2000)", "", "", "", "", ""
-            ]]
-        })
-
-        logger.info(f"✅ {label} sheet headers set (rows 1-6)")
+        logger.info(f"✅ {label} tab headers set (rows 1-6)")
 
     return True
 
@@ -165,9 +146,10 @@ def append_transaction(
     unit: str = None,
     price_per_unit: int = None,
 ) -> bool:
-    """Append a transaction row to the correct sheet."""
+    """Append a transaction row to the correct tab (Pemasukan or Pengeluaran)."""
     sheet_id = _get_sheet_id(jenis)
-    next_row = _find_next_row(sheet_id)
+    tab_name = "Pemasukan" if jenis == "pemasukan" else "Pengeluaran"
+    next_row = _find_next_row(sheet_id, tab_name)
     nomor = next_row - (DATA_START_ROW - 1)
 
     row = [[
@@ -184,7 +166,7 @@ def append_transaction(
     ]]
     result = _make_request(
         sheet_id,
-        f"/values/Sheet1!A{next_row}:J{next_row}?valueInputOption=USER_ENTERED",
+        f"/values/{tab_name}!A{next_row}:J{next_row}?valueInputOption=USER_ENTERED",
         method="PUT",
         data={"values": row},
     )
@@ -198,49 +180,41 @@ def append_transaction(
 
 
 def get_all_data(jenis: str = "pengeluaran") -> list:
-    """Read all data from a sheet."""
-    sheet_id = _get_sheet_id(jenis)
-    result = _make_request(sheet_id, "/values/Sheet1!A1:G2000")
+    """Read all data from a tab."""
+    tab_name = "Pemasukan" if jenis == "pemasukan" else "Pengeluaran"
+    result = _make_request(SHEET_PEMASUKAN, f"/values/{tab_name}!A1:J2000")
     return result.get("values", [])
 
 
 def clear_data(jenis: str = None) -> bool:
-    """Clear all data rows (keep headers) from one or both sheets.
-    
-    Args:
-        jenis: 'pemasukan', 'pengeluaran', or None (clear both)
-    """
-    sheets_to_clear = []
+    """Clear data rows (keep headers) from Pemasukan and/or Pengeluaran tabs."""
+    tabs_to_clear = []
     if jenis is None:
-        sheets_to_clear = [("Pemasukan", SHEET_PEMASUKAN), ("Pengeluaran", SHEET_PENGELUARAN)]
+        tabs_to_clear = ["Pemasukan", "Pengeluaran"]
     else:
-        label = "Pemasukan" if jenis == "pemasukan" else "Pengeluaran"
-        sheets_to_clear = [(label, _get_sheet_id(jenis))]
+        tabs_to_clear = ["Pemasukan" if jenis == "pemasukan" else "Pengeluaran"]
     
-    for label, sid in sheets_to_clear:
-        # Generate empty rows to fill data area (row 7 to 2000 = 1994 rows)
+    for tab in tabs_to_clear:
         empty_rows = [["", "", "", "", "", "", "", "", "", ""] for _ in range(1994)]
-        
-        # Clear data rows by overwriting with empty values
         result = _make_request(
-            sid,
-            "/values/Sheet1!A7:J2000?valueInputOption=USER_ENTERED",
+            SHEET_PEMASUKAN,
+            f"/values/{tab}!A7:J2000?valueInputOption=USER_ENTERED",
             method="PUT",
             data={"values": empty_rows},
         )
         if "error" in result:
-            logger.error(f"Failed to clear {label} sheet: {result['error']}")
+            logger.error(f"Failed to clear {tab}: {result['error']}")
             return False
         
-        # Re-set the TOTAL formula in row 6
+        # Re-set TOTAL formula
         _make_request(
-            sid,
-            "/values/Sheet1!A6:J6?valueInputOption=USER_ENTERED",
+            SHEET_PEMASUKAN,
+            f"/values/{tab}!A6:J6?valueInputOption=USER_ENTERED",
             method="PUT",
             data={"values": [["", "", "", "TOTAL", f"=SUM(E{DATA_START_ROW}:E2000)", "", "", "", "", ""]]},
         )
         
-        logger.info(f"✅ {label} sheet cleared (headers preserved)")
+        logger.info(f"✅ {tab} tab cleared (headers preserved)")
     
     return True
 
