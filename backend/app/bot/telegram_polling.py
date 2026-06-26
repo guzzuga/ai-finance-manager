@@ -787,15 +787,23 @@ async def poll_updates():
                     for update in updates:
                         offset = update["update_id"] + 1
 
-                        # Handle regular messages
+                        # Handle regular messages (each with its own DB session)
                         message = update.get("message")
                         if message:
-                            await process_message(message, db)
+                            msg_db = SessionLocal()
+                            try:
+                                await process_message(message, msg_db)
+                            finally:
+                                msg_db.close()
 
                         # Handle inline keyboard button presses
                         callback_query = update.get("callback_query")
                         if callback_query:
-                            await handle_callback_query(callback_query, db)
+                            cb_db = SessionLocal()
+                            try:
+                                await handle_callback_query(callback_query, cb_db)
+                            finally:
+                                cb_db.close()
 
             except httpx.TimeoutException:
                 logger.debug("Poll timeout (normal)")

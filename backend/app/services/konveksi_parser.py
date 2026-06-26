@@ -110,7 +110,7 @@ def detect_sale_message(message: str) -> Optional[dict]:
     msg = message.strip()
 
     # Check for sale keywords
-    sale_keywords = ["jual", "terjual", "sold", "order", "pesanan"]
+    sale_keywords = ["jual", "terjual", "sold", "pesanan"]
     has_sale_kw = any(kw in msg.lower() for kw in sale_keywords)
     if not has_sale_kw:
         return None
@@ -171,7 +171,7 @@ def detect_production_message(message: str) -> Optional[dict]:
     """
     msg = message.strip()
 
-    prod_keywords = ["produksi", "jahit", "buat", "cetak"]
+    prod_keywords = ["produksi", "jahit", "cetak", "konveksi"]
     has_prod_kw = any(kw in msg.lower() for kw in prod_keywords)
     if not has_prod_kw:
         return None
