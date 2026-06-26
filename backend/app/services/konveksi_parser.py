@@ -54,20 +54,47 @@ _MARKETPLACE_MAP = {
 
 
 def parse_indonesian_amount(text: str) -> int:
-    """Parse Indonesian currency text to integer."""
-    text = text.strip().lower().replace(",", "").replace(".", "")
+    """Parse Indonesian currency text to integer.
+    
+    Handles:
+        '1,2 juta' -> 1200000 (comma = decimal)
+        '1.5 juta' -> 1500000 (dot = decimal before multiplier)
+        '150.000'  -> 150000  (dot = thousands separator, no multiplier)
+        '85rb'     -> 85000
+    """
+    text = text.strip().lower()
     mult = 1
-    if text.endswith("jt") or text.endswith("juta"):
-        text = text.replace("jt", "").replace("juta", "").strip()
-        mult = 1_000_000
-    elif text.endswith("rb") or text.endswith("ribu"):
-        text = text.replace("rb", "").replace("ribu", "").strip()
-        mult = 1_000
-    elif text.endswith("m"):
-        text = text[:-1].strip()
-        mult = 1_000_000
+    
+    # Check multiplier FIRST, before stripping separators
+    for suffix, m in [("jt", 1_000_000), ("juta", 1_000_000), ("rb", 1_000), ("ribu", 1_000), ("m", 1_000_000)]:
+        if text.endswith(suffix):
+            num_part = text[:-len(suffix)].strip()
+            # In the number part, comma = decimal separator (Indonesian style)
+            num_part = num_part.replace(",", ".")
+            # If there are multiple dots, keep only the last as decimal
+            parts = num_part.split(".")
+            if len(parts) > 2:
+                num_part = "".join(parts[:-1]) + "." + parts[-1]
+            elif len(parts) == 2 and len(parts[1]) == 3:
+                # "150.000" style with 3-digit decimal = thousands separator
+                num_part = parts[0] + parts[1]
+            try:
+                return int(float(num_part) * m)
+            except (ValueError, TypeError):
+                return 0
+    
+    # No multiplier — treat as raw number
+    # Remove thousands separators (dots with 3 digits after)
+    text_clean = text.replace(",", "")
+    # Handle "150.000" -> "150000" (thousands separator)
+    parts = text_clean.split(".")
+    if len(parts) == 2 and len(parts[1]) == 3:
+        text_clean = parts[0] + parts[1]
+    else:
+        text_clean = text_clean.replace(".", "")
+    
     try:
-        return int(float(text) * mult)
+        return int(text_clean)
     except (ValueError, TypeError):
         return 0
 
@@ -129,7 +156,7 @@ def detect_sale_message(message: str) -> Optional[dict]:
         "quantity": quantity,
         "unit": unit,
         "marketplace_name": marketplace_name,
-        "price_per_unit": price,
+        "total_price": price,  # This is the TOTAL price, not per-unit
         "raw_message": message,
     }
 

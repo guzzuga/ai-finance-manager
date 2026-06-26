@@ -461,12 +461,16 @@ async def process_message(message: dict, db) -> None:
         sale_data = detect_sale_message(text)
         if sale_data:
             try:
+                total_price = sale_data.get("total_price", 0)
+                quantity = sale_data.get("quantity", 1)
+                price_per_unit = round(total_price / quantity) if quantity > 0 and total_price > 0 else 0
+
                 # Find or create product
                 product = KonveksiService.get_product_by_name(db, sale_data["product_name"])
                 if not product:
                     product = KonveksiService.create_product(db, {
                         "name": sale_data["product_name"],
-                        "price": sale_data.get("price_per_unit", 0),
+                        "price": price_per_unit,
                         "user_id": user.id,
                     })
 
@@ -483,8 +487,8 @@ async def process_message(message: dict, db) -> None:
                         "product_id": product.id,
                         "marketplace_id": marketplace.id,
                         "date": today_str,
-                        "quantity": sale_data["quantity"],
-                        "price_per_unit": sale_data.get("price_per_unit", product.price),
+                        "quantity": quantity,
+                        "price_per_unit": price_per_unit,
                         "hpp_per_unit": product.hpp,
                         "raw_message": text,
                         "source": "telegram",
