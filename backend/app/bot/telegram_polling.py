@@ -357,7 +357,7 @@ Keuntungan = Pemasukan - Pengeluaran"""
 
     # === TAMBAH USER ===
     if command.startswith("/adduser"):
-        parts = command.split(maxsplit=1)
+        parts = full_text.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             await send_message(chat_id, "👤 *Tambah User*\n\nFormat: `/adduser TELEGRAM_ID NAMA`\n\nContoh:\n• `/adduser 123456789 Budi`\n• `/adduser 987654321 Siti`\n\nCek Telegram ID: kirim `/start` ke @userinfobot")
             return
@@ -534,6 +534,25 @@ async def process_message(message: dict, db) -> None:
                 if material:
                     KonveksiService.update_material_stock(db, material.id, mat_data["quantity"])
                     price_str = f"Rp {mat_data['total_price']:,.0f}".replace(",", ".")
+                    # Create pengeluaran transaction for material purchase
+                    total_price = int(mat_data["total_price"])
+                    if total_price > 0:
+                        from app.services.transaction_service import TransactionService
+                        TransactionService.create_transaction(
+                            db,
+                            user_id=user.id,
+                            parsed={
+                                "type": "pengeluaran",
+                                "amount": total_price,
+                                "category": "bahan_baku",
+                                "note": f"Beli {material.name} {mat_data['quantity']} {mat_data['unit']}",
+                                "date": str(get_today()),
+                                "quantity": mat_data["quantity"],
+                                "unit": mat_data["unit"],
+                            },
+                            raw_message=text,
+                            source="telegram",
+                        )
                     # Sync to Google Sheets
                     try:
                         google_sheets_service.append_bahan_baku(
@@ -544,6 +563,19 @@ async def process_message(message: dict, db) -> None:
                             harga_per_unit=mat_data.get("price_per_unit", 0),
                             total=mat_data["total_price"],
                         )
+                        # Also sync to Pengeluaran tab
+                        if total_price > 0:
+                            google_sheets_service.append_transaction(
+                                tanggal=str(get_today()),
+                                jenis="pengeluaran",
+                                kategori="bahan_baku",
+                                nominal=total_price,
+                                catatan=f"Beli {material.name} {mat_data['quantity']} {mat_data['unit']}",
+                                sumber="telegram",
+                                quantity=mat_data["quantity"],
+                                unit=mat_data["unit"],
+                                price_per_unit=mat_data.get("price_per_unit", 0),
+                            )
                     except Exception as e:
                         logger.warning("Failed to sync bahan baku to Sheets: %s", e)
                     await send_message(chat_id, (
