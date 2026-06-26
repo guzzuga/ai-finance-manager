@@ -238,18 +238,23 @@ class KonveksiService:
 
         total_revenue = quantity * price_per_unit
         total_hpp = quantity * hpp_per_unit
-        marketplace_fee = int(total_revenue * fee_percent / 100) + fee_fixed
+        marketplace_fee = round(total_revenue * fee_percent / 100) + fee_fixed
         net_revenue = total_revenue - marketplace_fee - shipping_cost - discount
         profit = net_revenue - total_hpp
 
         # Calculate settlement date
         settlement_date = None
         settled = False
-        if marketplace and marketplace.settlement_days:
+        if marketplace and marketplace.settlement_days is not None:
             from datetime import timedelta, datetime as dt
             try:
                 sale_date = dt.fromisoformat(data["date"])
-                settlement_date = (sale_date + timedelta(days=marketplace.settlement_days)).isoformat()
+                if marketplace.settlement_days == 0:
+                    # Cash/offline — settled immediately
+                    settled = True
+                    settlement_date = data["date"]
+                else:
+                    settlement_date = (sale_date + timedelta(days=marketplace.settlement_days)).isoformat()
             except (ValueError, TypeError):
                 pass
 
@@ -412,18 +417,23 @@ class KonveksiService:
             if product.stock > 0 and cost_per_unit > 0:
                 old_hpp = product.hpp
                 old_stock = product.stock - quantity
-                new_hpp = int((old_hpp * old_stock + cost_per_unit * quantity) / product.stock)
+                new_hpp = round((old_hpp * old_stock + cost_per_unit * quantity) / product.stock)
                 product.hpp = new_hpp
 
         # Auto-create pengeluaran transaction
         if total_cost > 0:
+            from app.models.category import Category
+            prod_cat = db.query(Category).filter(
+                Category.name == "biaya_produksi", Category.type == "pengeluaran"
+            ).first()
             transaction = Transaction(
                 id=str(uuid.uuid4()),
                 user_id=data["user_id"],
                 date=data["date"],
                 type="pengeluaran",
+                category_id=prod_cat.id if prod_cat else None,
                 amount=total_cost,
-                note=f"Produksi {product.name if product else ''} × {quantity}",
+                note=f"Produksi {product.name if product else ''} x{quantity}",
                 source=data.get("source", "telegram"),
                 raw_message=data.get("raw_message"),
                 quantity=quantity,

@@ -314,10 +314,10 @@ def clear_konveksi_data() -> bool:
     
     for label, sheet_name, end_col in konveksi_sheets:
         col_count = ord(end_col) - ord('A') + 1
-        empty_rows = [[""] * col_count for _ in range(197)]
+        empty_rows = [[""] * col_count for _ in range(1997)]
         result = _make_request(
             SHEET_PEMASUKAN,
-            f"/values/{sheet_name}!A4:{end_col}200?valueInputOption=USER_ENTERED",
+            f"/values/{sheet_name}!A4:{end_col}2000?valueInputOption=USER_ENTERED",
             method="PUT",
             data={"values": empty_rows},
         )
